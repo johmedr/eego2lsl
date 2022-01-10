@@ -3,6 +3,9 @@ import pylsl
 import asyncio
 import warnings
 import time
+import os
+from .elc_parser import read_channels_positions
+
 
 class FactorySingleton(eego_sdk.factory): 
     _instances = {}
@@ -49,12 +52,16 @@ def cmd_list(*args):
                 )
             )
 
-def parse_channel_names(file):
-    pass
+def parse_channel_names(fname):
+    ch_names = []
+    with open(fname, 'r') as f:
+        for l in f.readlines():
+            ch_names.append(l.split('\n')[0])
 
+    return ch_names
 
 def cmd_stream(args):
-    name = args.name
+    stream_name = args.stream_name
     dtype = args.type
     amp = args.amp
     rate = args.rate
@@ -62,6 +69,7 @@ def cmd_stream(args):
     eeg_range = args.eeg_range
     bip_range = args.bip_range
     channel_file = args.channel_file
+    headcap = args.headcap
     bip = args.bip
     eeg = not args.no_eeg
 
@@ -86,7 +94,6 @@ def cmd_stream(args):
             raise ValueError('Invalid bip range.')
 
 
-
     if rate % chunks != 0:
         warnings.warn(f"Rate {rate} is not divisible in {chunks} chunks! Packet losses may result.")
     lsl_rate = rate // chunks
@@ -103,24 +110,68 @@ def cmd_stream(args):
                     else 'bip'
             })
 
-    if channel_file: 
-        pass
+    if channel_file == "":
+        this_dir = os.path.realpath(os.path.dirname(__file__))
+        extra_path = os.path.join(this_dir, 'extra')
+        cap_ch_count = len([_ for _ in stream_channels if _['type'] == 'eeg'])
+        channel_file = os.path.join(extra_path, f"{headcap}_{cap_ch_count}.txt")
+
+
+    try: 
+        ch_names = parse_channel_names(channel_file)
+        
+        assert(len(ch_names) == cap_ch_count)
+        
+        for name, ch in zip(ch_names, stream_channels):
+            if ch['type'] == 'eeg':
+                ch['name'] = name
+                
+        ch_pos, desc = read_channels_positions(f"{headcap}_{cap_ch_count}.elc", return_desc=True)
+        # if all(ch['name'] in ch_pos.keys() for ch in stream_channels):
+        _stream_channels_ok = []
+        for ch in stream_channels:
+            try:
+                ch['pos'] = ch_pos[ch['name']]
+                _stream_channels_ok.append(ch)
+            except KeyError:
+                continue
+                # ch['pos'] = (None, None, None)
+        stream_channels = _stream_channels_ok
+
+    except Exception as e:
+        print("Cannot get channel names. Got error:")
+        print(e)
+        print("Skipping. ")
 
     stream_info = pylsl.StreamInfo(
-        name=name, 
+        name=stream_name, 
         type=dtype, 
         channel_format=pylsl.cf_float32, 
         channel_count=len(stream_channels), 
-        nominal_srate=lsl_rate,
-        source_id=name,
+        nominal_srate=rate,
+        source_id=stream_name,
     )
 
     chann_desc = stream_info.desc().append_child('channels')
-    for ch in stream_channels:
-        chann_desc.append_child('channel')\
-            .append_child_value('label', ch['name'])\
-            .append_child_value('unit', 'V' if dtype == 'eeg' else 'Ohms')\
-            .append_child_value('type', ch['type'])
+    if 'pos' in stream_channels[0].keys():
+        for ch in stream_channels:
+            chd = chann_desc.append_child('channel')
+            chd.append_child_value('label', ch['name'])\
+                .append_child_value('unit', 'V' if dtype == 'eeg' else 'Ohms')\
+                .append_child_value('type', ch['type'])
+
+            chd.append_child('location').append_child_value('X', str(ch['pos'][1]))\
+                                    .append_child_value('Y', str(ch['pos'][0]))\
+                                    .append_child_value('Z', str(ch['pos'][2]))\
+                                    .append_child_value('unit', desc['UnitPosition'])
+
+    else:
+        for ch in stream_channels:
+            chann_desc.append_child('channel')\
+                .append_child_value('label', ch['name'])\
+                .append_child_value('unit', 'V' if dtype == 'eeg' else 'Ohms')\
+                .append_child_value('type', ch['type'])
+
 
     stream_outlet = pylsl.StreamOutlet(stream_info)
 
@@ -133,20 +184,21 @@ def cmd_stream(args):
     stopped = False
 
     ttarget = 1./lsl_rate
-
-
+    
     while not stopped:
         try: 
             tstart = time.perf_counter()
+
             buffer = stream_amp.getData()
 
             chunk = [
                 [buffer.getSample(c['index'], s) for c in stream_channels]
                 for s in range(buffer.getSampleCount())
             ]
-
             stream_outlet.push_chunk(chunk)
 
-            loop.run_until_complete(asyncio.sleep(ttarget - (tstart - time.perf_counter())))
+            loop.run_until_complete(asyncio.sleep(max(ttarget - (tstart - time.perf_counter()), 0)))
+
+
         except (KeyboardInterrupt, SystemExit): 
             break
