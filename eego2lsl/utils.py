@@ -61,20 +61,24 @@ def parse_channel_names(fname):
     return ch_names
 
 def cmd_stream(args):
-    stream_name = args.stream_name
-    dtype = args.type
-    amp = args.amp
-    rate = args.rate
-    chunks = args.chunks
-    eeg_range = args.eeg_range
-    bip_range = args.bip_range
+    stream_name  = args.stream_name
+    dtype        = args.type
+    amp          = args.amp
+    rate         = args.rate
+    chunks       = args.chunks
+    eeg_range    = args.eeg_range
+    bip_range    = args.bip_range
     channel_file = args.channel_file
-    headcap = args.headcap
-    bip = args.bip
-    eeg = not args.no_eeg
+    headcap      = args.headcap
+    has_bip      = len(args.bip) > 0
+    bip          = int(args.bip) if args.bip != 'all' else 10_000
+    eeg          = not args.no_eeg
 
-    assert(bip or eeg)
+    assert(has_bip or eeg)
     assert(dtype in ['eeg', 'imp'])
+    if headcap not in ('net', 'original'): 
+        raise AttributeError("Headcap must be either 'net' (for Waveguard Net) or 'original' (for Waveguard Original).")
+    assert(headcap in ['net', 'original'])
 
 
     amp = list_amplifiers()[amp]
@@ -99,22 +103,27 @@ def cmd_stream(args):
     lsl_rate = rate // chunks
     stream_channels = []
 
+    nbip = 0
     for ch in channels:
-        if bip and ch.getType() == eego_sdk.channel_type.bip \
-            or eeg and ch.getType() == eego_sdk.channel_type.ref:
+        if has_bip and ch.getType() == eego_sdk.channel_type.bip and nbip < bip: 
+            nbip += 1
+            stream_channels.append({
+                'index': ch.getIndex(),
+                'name': f'BIP{nbip}', 
+                'type': 'bip'
+            })
+        elif eeg and ch.getType() == eego_sdk.channel_type.ref:
             stream_channels.append({
                 'index': ch.getIndex(),
                 'name': str(ch), 
-                'type': 
-                    'eeg' if ch.getType() == eego_sdk.channel_type.ref
-                    else 'bip'
+                'type': 'eeg'
             })
 
     if channel_file == "":
-        this_dir = os.path.realpath(os.path.dirname(__file__))
-        extra_path = os.path.join(this_dir, 'extra')
+        this_dir     = os.path.realpath(os.path.dirname(__file__))
+        extra_path   = os.path.join(this_dir, 'extra')
         cap_ch_count = len([_ for _ in stream_channels if _['type'] == 'eeg'])
-        channel_file = os.path.join(extra_path, f"{headcap}_{cap_ch_count}.txt")
+        channel_file = os.path.join(extra_path, f"waveguard_{headcap}_{cap_ch_count}.txt")
 
 
     try: 
@@ -126,16 +135,15 @@ def cmd_stream(args):
             if ch['type'] == 'eeg':
                 ch['name'] = name
                 
-        ch_pos, desc = read_channels_positions(f"{headcap}_{cap_ch_count}.elc", return_desc=True)
+        ch_pos, desc = read_channels_positions(f"waveguard_{headcap}_{cap_ch_count}.elc", return_desc=True)
         # if all(ch['name'] in ch_pos.keys() for ch in stream_channels):
         _stream_channels_ok = []
         for ch in stream_channels:
             try:
                 ch['pos'] = ch_pos[ch['name']]
-                _stream_channels_ok.append(ch)
             except KeyError:
-                continue
-                # ch['pos'] = (None, None, None)
+                ch['pos'] = (None, None, None)
+            _stream_channels_ok.append(ch)
         stream_channels = _stream_channels_ok
 
     except Exception as e:
@@ -144,12 +152,12 @@ def cmd_stream(args):
         print("Skipping. ")
 
     stream_info = pylsl.StreamInfo(
-        name=stream_name, 
-        type=dtype, 
+        name          =stream_name, 
+        type          =dtype, 
         channel_format=pylsl.cf_float32, 
-        channel_count=len(stream_channels), 
-        nominal_srate=rate,
-        source_id=stream_name,
+        channel_count =len(stream_channels), 
+        nominal_srate =rate,
+        source_id     =stream_name,
     )
 
     chann_desc = stream_info.desc().append_child('channels')
@@ -174,6 +182,18 @@ def cmd_stream(args):
 
 
     stream_outlet = pylsl.StreamOutlet(stream_info)
+
+
+    print(  
+        f'Stream configuration is: \n'
+        f'  name: {stream_info.name()}\n'
+        f'  type: {stream_info.type()}\n'
+        f'  uid: {stream_info.source_id()}\n'
+        f'  channels: {stream_info.channel_count()}\n'
+        f'  rate: {stream_info.nominal_srate()}Hz\n'
+        f'Now streaming!'
+    )
+
 
     if dtype == "eeg":
         stream_amp = amp.OpenEegStream(rate, eeg_range, bip_range)
