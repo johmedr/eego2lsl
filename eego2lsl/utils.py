@@ -70,9 +70,11 @@ def cmd_stream(args):
     bip_range    = args.bip_range
     channel_file = args.channel_file
     headcap      = args.headcap
-    has_bip      = len(args.bip) > 0
-    bip          = int(args.bip) if args.bip != 'all' else 10_000
     eeg          = not args.no_eeg
+    has_bip      = len(args.bip) > 0
+    if has_bip:
+        bip      = int(args.bip) if args.bip != 'all' else 10_000
+    else: bip    = 0
 
     assert(has_bip or eeg)
     assert(dtype in ['eeg', 'imp'])
@@ -81,7 +83,11 @@ def cmd_stream(args):
     assert(headcap in ['net', 'original'])
 
 
-    amp = list_amplifiers()[amp]
+    amps = list_amplifiers()
+    if len(amps) == 0:
+        raise RuntimeError("No amplifier found!")
+
+    amp      = amps[amp]
     channels = amp.getChannelList()
 
     if dtype == 'imp':
