@@ -77,7 +77,7 @@ def cmd_stream(args):
     else: bip    = 0
 
     assert(has_bip or eeg)
-    assert(dtype in ['eeg', 'imp'])
+    assert(dtype in ['meas', 'imp'])
     if headcap not in ('net', 'original'): 
         raise AttributeError("Headcap must be either 'net' (for Waveguard Net) or 'original' (for Waveguard Original).")
     assert(headcap in ['net', 'original'])

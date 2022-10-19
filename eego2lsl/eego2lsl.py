@@ -13,7 +13,7 @@ def main():
 	stream_parser = subparser.add_parser('stream')
 	stream_parser.set_defaults(func=cmd_stream)
 
-	stream_parser.add_argument('type', type=str, help="One of 'eeg', 'imp'")
+	stream_parser.add_argument('type', type=str, help="One of 'data', 'impedance'")
 	stream_parser.add_argument('--headcap', type=str, help="One of 'net', 'original'")
 	stream_parser.add_argument('--stream-name', dest='stream_name', type=str, default="eego-stream")
 	stream_parser.add_argument('--amp', type=int, default=0)
