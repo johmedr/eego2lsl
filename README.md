@@ -1,6 +1,8 @@
 ## Streem EEGO data to LSL
 
 ### Installing the package: 
+This package requires the SDK distributed by ANT Neuro, as well as the Python bindings for eego SDK. The bindings are available at https://gitlab.com/smeeze/eego-sdk-pybind11 (a one-liner to install them is at the end of this document). 
+Then, simply run 
 ```
 pip install git+https://github.com/yop0/eego2lsl.git
 ```
@@ -63,3 +65,12 @@ where the value `ee01` must be replaced for other amplifiers. The rules must the
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
+--- 
+#### Installing the Python bindings
+Provided that the file `eego-SDK-x.x.x.xxxxx.zip` is at location `SDK_PATH`, the bindings can be installed (in the folder INSTALL_DIR) with the following one-liner:
+```
+INSTALL_DIR="." SDK_PATH="./eego-SDK-1.3.19.40453.zip" bash -c \
+    'git clone https://gitlab.com/smeeze/eego-sdk-pybind11.git eego-bindings && \
+    cd eego-bindings && echo "set(EEGO_SDK_ZIP $SDK_PATH)" > user.cmake && \
+    mkdir build && cd build && cmake .. && make -j7 && sudo make install'
+```
