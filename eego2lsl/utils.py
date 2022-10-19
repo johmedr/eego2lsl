@@ -70,17 +70,21 @@ def cmd_stream(args):
     bip_range    = args.bip_range
     channel_file = args.channel_file
     headcap      = args.headcap
-    eeg          = not args.no_eeg
+    has_eeg      = not args.no_eeg
     has_bip      = len(args.bip) > 0
     if has_bip:
         bip      = int(args.bip) if args.bip != 'all' else 10_000
     else: bip    = 0
 
-    assert(has_bip or eeg)
-    assert(dtype in ['meas', 'imp'])
-    if headcap not in ('net', 'original'): 
-        raise AttributeError("Headcap must be either 'net' (for Waveguard Net) or 'original' (for Waveguard Original).")
-    assert(headcap in ['net', 'original'])
+    assert(has_bip or has_eeg)
+    assert(dtype in ['data', 'impedance'])
+
+    if has_eeg:
+        if headcap not in ('net', 'original'): 
+            raise AttributeError("Headcap must be either 'net' (for Waveguard Net) or 'original' (for Waveguard Original).")
+
+    if has_bip: 
+        pass
 
 
     amps = list_amplifiers()
@@ -97,7 +101,7 @@ def cmd_stream(args):
         if rate not in amp.getSamplingRatesAvailable():
             raise ValueError('Invalid rate.')
 
-        if eeg and eeg_range not in amp.getReferenceRangesAvailable():
+        if has_eeg and eeg_range not in amp.getReferenceRangesAvailable():
             raise ValueError('Invalid eeg range.')
         
         if bip and bip_range not in amp.getBipolarRangesAvailable():
@@ -118,7 +122,7 @@ def cmd_stream(args):
                 'name': f'BIP{nbip}', 
                 'type': 'bip'
             })
-        elif eeg and ch.getType() == eego_sdk.channel_type.ref:
+        elif has_eeg and ch.getType() == eego_sdk.channel_type.ref:
             stream_channels.append({
                 'index': ch.getIndex(),
                 'name': str(ch), 
